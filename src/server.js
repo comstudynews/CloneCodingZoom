@@ -1,5 +1,5 @@
-import http from 'http'
-import WebSocket from 'ws'
+import http from 'http';
+import SocketIO from 'socket.io';
 import express from "express";
 import { SocketAddress } from 'net';
 
@@ -11,58 +11,46 @@ app.set('views', __dirname + '/views');
 
 app.use('/public', express.static(__dirname + '/public'))
 
-app.get('/', (req, res) => {
-        req.app.render('home',{},(err, html) => {
-            res.end(html)
-        })
-});
+app.get('/', (req, res) => res.render('home'));
 app.get('/*', (req, res) => res.redirect('/'));
 
-const handleListen = () => {
-    console.log("Listening on http://localhost:" + app.get('port'));
-}
 
-const server = http.createServer(app);
-const wss = new WebSocket.Server({server});
+const httpServer = http.createServer(app);
+const wsServer = SocketIO(httpServer);
 
-const sockets = [];
+//{"roomName": [{"socket id": socket, "socket id": socket}]}
+const sockets = {}
 
-wss.on('connection', (socket) => {
-    socket["nickname"] = "Anonymous";
-    sockets.push(socket);
-    console.log("Connected to Browser");
-    socket.on('close', (socket) =>{
-        console.log('Disconnected from Browser');
-    });
-    
-    socket.on('message', (msg) => {
-        let message = JSON.parse(msg);
-        console.log(message.type + ": " + message.payload);
-        switch(message.type) {
-        case "new_message" :
-            let senderNick = "";
-            sockets.forEach((aSocket)=>{
-                if(socket == aSocket){
-                    senderNick = socket["nickname"];
-                }
-            });
-            sockets.forEach((aSocket)=>{
-                console.log(`${senderNick} : ${message.payload} `);
-                aSocket.send( `${senderNick} : ${message.payload} `);
-            });
-            break;
-        case "nickname" : 
-            console.log('change nickname ...');
-            socket["nickname"] = message.payload;
-            // sockets.forEach((aSocket)=>{
-            //     if(aSocket == socket) {
-            //         aSocket["nickname"] = message.payload;
-            //     }
-            // });
+wsServer.on('connection',(socket) => {
+    socket.on('enter_room', (roomName, done) => {
+        done();
+        socket.join(roomName);
+        socket.to(roomName).emit('welcome');
+        socket.roomName = roomName;
+        if(sockets[roomName] == undefined) {
+            sockets[roomName] = [];
         }
+        sockets[roomName].push(socket);
+    });
+
+    // socket.on('disconnect', () =>{    
+    //     console.log('socket disconnected');
+    //     let roomName = socket.roomName;
+    //     if( sockets[roomName] != undefined ) {
+    //             sockets[roomName].pop().to(roomName).emit('bye');
+    //     }
+    // });
+
+    // 종료 이벤트 구분 주의 : disconnecting, disconnect
+    socket.on('disconnecting', () => {
+        socket.rooms.forEach((room => socket.to(room).emit('bye')))
+    });
+
+    socket.on('new_message', (msg, room, done) => {
+        socket.to(room).emit('new_message', msg);
+        done();
     });
 });
 
-
-
-server.listen(app.get('port'), handleListen);
+const handleListen = ()=> console.log(`Listening on http://localhost:${app.get('port')}`);
+httpServer.listen(app.get('port'), handleListen);
