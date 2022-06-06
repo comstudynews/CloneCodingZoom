@@ -47,6 +47,9 @@ build/Release
 node_modules/
 jspm_packages/
 
+# step by step backup_source_code
+backup_source_code/
+
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/
 
